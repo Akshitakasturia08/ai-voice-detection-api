@@ -9,7 +9,7 @@ import os
 # -------------------------------
 app = FastAPI()
 
-SECRET_API_KEY = "my_secret_key_123"
+SECRET_API_KEY = os.getenv("SECRET_API_KEY")
 
 # -------------------------------
 # Request model
@@ -129,3 +129,4 @@ def detect_voice(
         "confidenceScore": result["confidence"],
         "explanation": result["explanation"]
     }
+
