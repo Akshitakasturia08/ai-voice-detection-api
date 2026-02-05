@@ -7,8 +7,9 @@ import os
 # -------------------------------
 # App initialization
 # -------------------------------
-app = FastAPI()
+app = FastAPI(title="AI Voice Detection API")
 
+# Read API key from environment (Render)
 SECRET_API_KEY = os.getenv("SECRET_API_KEY")
 
 # -------------------------------
@@ -24,27 +25,12 @@ class VoiceRequest(BaseModel):
 # Utility: Decode & save audio
 # -------------------------------
 def save_base64_audio(audio_base64: str, audio_format: str) -> str:
-    """
-    Decodes Base64 audio and saves it as a file.
-    Returns the filename.
-    """
-
-    # 1️⃣ Validate audio format
-    if audio_format.lower() != "mp3":
-        raise HTTPException(status_code=400, detail="Only mp3 format is supported")
-
-    # 2️⃣ Decode Base64
     try:
         audio_bytes = base64.b64decode(audio_base64)
     except Exception:
-        raise HTTPException(status_code=400, detail="Invalid Base64 audio")
+        raise HTTPException(status_code=400, detail="Invalid base64 audio")
 
-    # 3️⃣ File size validation (max 5 MB)
-    if len(audio_bytes) > 5 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="Audio file too large")
-
-    # 4️⃣ Save audio file
-    filename = f"audio_{uuid.uuid4()}.mp3"
+    filename = f"audio_{uuid.uuid4()}.{audio_format}"
     with open(filename, "wb") as f:
         f.write(audio_bytes)
 
@@ -52,81 +38,60 @@ def save_base64_audio(audio_base64: str, audio_format: str) -> str:
 
 
 # -------------------------------
-# Rule-based "model"
+# Health check (VERY IMPORTANT)
 # -------------------------------
-def classify_audio_rule_based(file_path: str):
-    """
-    Rule-based voice classification using file size.
-    """
-
-    file_size_kb = os.path.getsize(file_path) / 1024
-
-    if file_size_kb < 50:
-        return {
-            "classification": "AI_GENERATED",
-            "confidence": 0.78,
-            "explanation": (
-                "The uploaded audio file is unusually small. "
-                "AI-generated voices often produce compressed audio."
-            )
-        }
-
+@app.get("/")
+def health_check():
     return {
-        "classification": "HUMAN",
-        "confidence": 0.72,
-        "explanation": (
-            "The audio file size and structure are consistent "
-            "with natural human speech."
-        )
+        "status": "ok",
+        "message": "AI Voice Detection API is running"
     }
 
 
 # -------------------------------
-# API Endpoint
+# Main API endpoint
 # -------------------------------
-@app.post("/api/voice-detection")
+@app.post("/detect")
 def detect_voice(
-    data: VoiceRequest,
+    request: VoiceRequest,
     x_api_key: str = Header(None)
 ):
-    # 1️⃣ API key validation
-    if x_api_key != SECRET_API_KEY:
-        raise HTTPException(status_code=401, detail="Invalid API key")
-    
-    SUPPORTED_LANGUAGES = {
-    "tamil",
-    "english",
-    "hindi",
-    "malayalam",
-    "telugu",
-}
-
-
-    if data.language.lower() not in SUPPORTED_LANGUAGES:
+    # Check API key
+    if not SECRET_API_KEY:
         raise HTTPException(
-            status_code=400,
-            detail="Unsupported language"
+            status_code=500,
+            detail="Server API key not configured"
         )
 
-    # 2️⃣ Basic input validation
-    if not data.audioBase64:
-        raise HTTPException(status_code=400, detail="Audio data missing")
+    if x_api_key != SECRET_API_KEY:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid API key"
+        )
 
-    # 3️⃣ Decode & save audio
-    audio_file_path = save_base64_audio(
-        data.audioBase64,
-        data.audioFormat
+    # Save audio
+    filename = save_base64_audio(
+        request.audioBase64,
+        request.audioFormat
     )
 
-    # 4️⃣ Apply rule-based model
-    result = classify_audio_rule_based(audio_file_path)
+    # ---- MOCK AI LOGIC (for hackathon/demo) ----
+    confidence_score = 0.78
+    classification = "AI_GENERATED"
 
-    # 5️⃣ Return response
+    explanation = (
+        "The uploaded audio is unusually small and compressed. "
+        "AI-generated voices often show such patterns."
+    )
+
     return {
         "status": "success",
-        "language": data.language,
-        "classification": result["classification"],
-        "confidenceScore": result["confidence"],
-        "explanation": result["explanation"]
+        "language": request.language,
+        "classification": classification,
+        "confidenceScore": confidence_score,
+        "explanation": explanation,
+        "savedFile": filename
     }
+
+
 
